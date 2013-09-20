@@ -207,7 +207,7 @@ static int subWord(int x)
 	return (s[x&255]&255 | ((s[(x>>8)&255]&255)<<8) | ((s[(x>>16)&255]&255)<<16) | s[(x>>24)&255]<<24);
 }
 
-static int* generateWorkingKey(char* key, int encryption)
+static int* generateWorkingKey(char* key)
 {
 	int KC = strlen(key)/4;
 	int t;
@@ -244,7 +244,7 @@ static int* generateWorkingKey(char* key, int encryption)
 		W[i>>2][i&3] = W[(i - KC)>>2][(i-KC)&3] ^ temp;
 	}
 	
-	if (!encryption) {
+	if (!for_encryption) {
 		for (int j=1; j<rounds; j++)
 			for (i=0; i<4; i++)
 				W[j][i] = inv_mcol(W[j][i]);
@@ -262,11 +262,16 @@ static int		first;
 
 void init(int encryption, char* AESKey) 
 {
-	working_key = generateWorkingKey(AESKey, encryption);
-	for_encryption = encryption;
+    for_encryption = encryption;
+	working_key = generateWorkingKey(AESKey);
 	remaining = (char*)malloc(sizeof(char)); //?
 	first = 1;
 	return;
+}
+
+void deinit()
+{
+    free(working_key);
 }
 
 int getBlockSize()
@@ -500,10 +505,10 @@ static void encryptBlock(char* KW)
 
 	// the final round's table is a simple function of S so we don't use a whole other four tables for it
 
-	C0 = (S[r0&255]&255) ^ ((S[(r1>>8)&255]&255)<<8) ^ ((S[(r2>>16)&255]&255)<<16) ^ (S[(r3>>24)&255]<<24) ^ KW[r][0];
-	C1 = (S[r1&255]&255) ^ ((S[(r2>>8)&255]&255)<<8) ^ ((S[(r3>>16)&255]&255)<<16) ^ (S[(r0>>24)&255]<<24) ^ KW[r][1];
-	C2 = (S[r2&255]&255) ^ ((S[(r3>>8)&255]&255)<<8) ^ ((S[(r0>>16)&255]&255)<<16) ^ (S[(r1>>24)&255]<<24) ^ KW[r][2];
-	C3 = (S[r3&255]&255) ^ ((S[(r0>>8)&255]&255)<<8) ^ ((S[(r1>>16)&255]&255)<<16) ^ (S[(r2>>24)&255]<<24) ^ KW[r][3];
+	C0 = (s[r0&255]&255) ^ ((s[(r1>>8)&255]&255)<<8) ^ ((s[(r2>>16)&255]&255)<<16) ^ (s[(r3>>24)&255]<<24) ^ KW[r][0];
+	C1 = (s[r1&255]&255) ^ ((s[(r2>>8)&255]&255)<<8) ^ ((s[(r3>>16)&255]&255)<<16) ^ (s[(r0>>24)&255]<<24) ^ KW[r][1];
+	C2 = (s[r2&255]&255) ^ ((s[(r3>>8)&255]&255)<<8) ^ ((s[(r0>>16)&255]&255)<<16) ^ (s[(r1>>24)&255]<<24) ^ KW[r][2];
+	C3 = (s[r3&255]&255) ^ ((s[(r0>>8)&255]&255)<<8) ^ ((s[(r1>>16)&255]&255)<<16) ^ (s[(r2>>24)&255]<<24) ^ KW[r][3];
 }
 
 static void decryptBlock(char* KW)
@@ -519,25 +524,25 @@ static void decryptBlock(char* KW)
 
 	while (r>1)
 	{
-		r0 = Tinv0[C0&255] ^ shift(Tinv0[(C3>>8)&255], 24) ^ shift(Tinv0[(C2>>16)&255], 16) ^ shift(Tinv0[(C1>>24)&255], 8) ^ KW[r][0];
-		r1 = Tinv0[C1&255] ^ shift(Tinv0[(C0>>8)&255], 24) ^ shift(Tinv0[(C3>>16)&255], 16) ^ shift(Tinv0[(C2>>24)&255], 8) ^ KW[r][1];
-		r2 = Tinv0[C2&255] ^ shift(Tinv0[(C1>>8)&255], 24) ^ shift(Tinv0[(C0>>16)&255], 16) ^ shift(Tinv0[(C3>>24)&255], 8) ^ KW[r][2];
-		r3 = Tinv0[C3&255] ^ shift(Tinv0[(C2>>8)&255], 24) ^ shift(Tinv0[(C1>>16)&255], 16) ^ shift(Tinv0[(C0>>24)&255], 8) ^ KW[r--][3];
-		C0 = Tinv0[r0&255] ^ shift(Tinv0[(r3>>8)&255], 24) ^ shift(Tinv0[(r2>>16)&255], 16) ^ shift(Tinv0[(r1>>24)&255], 8) ^ KW[r][0];
-		C1 = Tinv0[r1&255] ^ shift(Tinv0[(r0>>8)&255], 24) ^ shift(Tinv0[(r3>>16)&255], 16) ^ shift(Tinv0[(r2>>24)&255], 8) ^ KW[r][1];
-		C2 = Tinv0[r2&255] ^ shift(Tinv0[(r1>>8)&255], 24) ^ shift(Tinv0[(r0>>16)&255], 16) ^ shift(Tinv0[(r3>>24)&255], 8) ^ KW[r][2];
-		C3 = Tinv0[r3&255] ^ shift(Tinv0[(r2>>8)&255], 24) ^ shift(Tinv0[(r1>>16)&255], 16) ^ shift(Tinv0[(r0>>24)&255], 8) ^ KW[r--][3];
+		r0 = inv_T0[C0&255] ^ shift(inv_T0[(C3>>8)&255], 24) ^ shift(inv_T0[(C2>>16)&255], 16) ^ shift(inv_T0[(C1>>24)&255], 8) ^ KW[r][0];
+		r1 = inv_T0[C1&255] ^ shift(inv_T0[(C0>>8)&255], 24) ^ shift(inv_T0[(C3>>16)&255], 16) ^ shift(inv_T0[(C2>>24)&255], 8) ^ KW[r][1];
+		r2 = inv_T0[C2&255] ^ shift(inv_T0[(C1>>8)&255], 24) ^ shift(inv_T0[(C0>>16)&255], 16) ^ shift(inv_T0[(C3>>24)&255], 8) ^ KW[r][2];
+		r3 = inv_T0[C3&255] ^ shift(inv_T0[(C2>>8)&255], 24) ^ shift(inv_T0[(C1>>16)&255], 16) ^ shift(inv_T0[(C0>>24)&255], 8) ^ KW[r--][3];
+		C0 = inv_T0[r0&255] ^ shift(inv_T0[(r3>>8)&255], 24) ^ shift(inv_T0[(r2>>16)&255], 16) ^ shift(inv_T0[(r1>>24)&255], 8) ^ KW[r][0];
+		C1 = inv_T0[r1&255] ^ shift(inv_T0[(r0>>8)&255], 24) ^ shift(inv_T0[(r3>>16)&255], 16) ^ shift(inv_T0[(r2>>24)&255], 8) ^ KW[r][1];
+		C2 = inv_T0[r2&255] ^ shift(inv_T0[(r1>>8)&255], 24) ^ shift(inv_T0[(r0>>16)&255], 16) ^ shift(inv_T0[(r3>>24)&255], 8) ^ KW[r][2];
+		C3 = inv_T0[r3&255] ^ shift(inv_T0[(r2>>8)&255], 24) ^ shift(inv_T0[(r1>>16)&255], 16) ^ shift(inv_T0[(r0>>24)&255], 8) ^ KW[r--][3];
 	}
 
-	r0 = Tinv0[C0&255] ^ shift(Tinv0[(C3>>8)&255], 24) ^ shift(Tinv0[(C2>>16)&255], 16) ^ shift(Tinv0[(C1>>24)&255], 8) ^ KW[r][0];
-	r1 = Tinv0[C1&255] ^ shift(Tinv0[(C0>>8)&255], 24) ^ shift(Tinv0[(C3>>16)&255], 16) ^ shift(Tinv0[(C2>>24)&255], 8) ^ KW[r][1];
-	r2 = Tinv0[C2&255] ^ shift(Tinv0[(C1>>8)&255], 24) ^ shift(Tinv0[(C0>>16)&255], 16) ^ shift(Tinv0[(C3>>24)&255], 8) ^ KW[r][2];
-	r3 = Tinv0[C3&255] ^ shift(Tinv0[(C2>>8)&255], 24) ^ shift(Tinv0[(C1>>16)&255], 16) ^ shift(Tinv0[(C0>>24)&255], 8) ^ KW[r][3];
+	r0 = inv_T0[C0&255] ^ shift(inv_T0[(C3>>8)&255], 24) ^ shift(inv_T0[(C2>>16)&255], 16) ^ shift(inv_T0[(C1>>24)&255], 8) ^ KW[r][0];
+	r1 = inv_T0[C1&255] ^ shift(inv_T0[(C0>>8)&255], 24) ^ shift(inv_T0[(C3>>16)&255], 16) ^ shift(inv_T0[(C2>>24)&255], 8) ^ KW[r][1];
+	r2 = inv_T0[C2&255] ^ shift(inv_T0[(C1>>8)&255], 24) ^ shift(inv_T0[(C0>>16)&255], 16) ^ shift(inv_T0[(C3>>24)&255], 8) ^ KW[r][2];
+	r3 = inv_T0[C3&255] ^ shift(inv_T0[(C2>>8)&255], 24) ^ shift(inv_T0[(C1>>16)&255], 16) ^ shift(inv_T0[(C0>>24)&255], 8) ^ KW[r][3];
 	
 	// the final round's table is a simple function of Si so we don't use a whole other four tables for it
 
-	C0 = (Si[r0&255]&255) ^ ((Si[(r3>>8)&255]&255)<<8) ^ ((Si[(r2>>16)&255]&255)<<16) ^ (Si[(r1>>24)&255]<<24) ^ KW[0][0];
-	C1 = (Si[r1&255]&255) ^ ((Si[(r0>>8)&255]&255)<<8) ^ ((Si[(r3>>16)&255]&255)<<16) ^ (Si[(r2>>24)&255]<<24) ^ KW[0][1];
-	C2 = (Si[r2&255]&255) ^ ((Si[(r1>>8)&255]&255)<<8) ^ ((Si[(r0>>16)&255]&255)<<16) ^ (Si[(r3>>24)&255]<<24) ^ KW[0][2];
-	C3 = (Si[r3&255]&255) ^ ((Si[(r2>>8)&255]&255)<<8) ^ ((Si[(r1>>16)&255]&255)<<16) ^ (Si[(r0>>24)&255]<<24) ^ KW[0][3];
+	C0 = (inv_s[r0&255]&255) ^ ((inv_s[(r3>>8)&255]&255)<<8) ^ ((inv_s[(r2>>16)&255]&255)<<16) ^ (inv_s[(r1>>24)&255]<<24) ^ KW[0][0];
+	C1 = (inv_s[r1&255]&255) ^ ((inv_s[(r0>>8)&255]&255)<<8) ^ ((inv_s[(r3>>16)&255]&255)<<16) ^ (inv_s[(r2>>24)&255]<<24) ^ KW[0][1];
+	C2 = (inv_s[r2&255]&255) ^ ((inv_s[(r1>>8)&255]&255)<<8) ^ ((inv_s[(r0>>16)&255]&255)<<16) ^ (inv_s[(r3>>24)&255]<<24) ^ KW[0][2];
+	C3 = (inv_s[r3&255]&255) ^ ((inv_s[(r2>>8)&255]&255)<<8) ^ ((inv_s[(r1>>16)&255]&255)<<16) ^ (inv_s[(r0>>24)&255]<<24) ^ KW[0][3];
 }
