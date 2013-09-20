@@ -297,3 +297,170 @@ static int processBlock(char* in, int inOff, char* out, int outOff)
 	
 	return BLOCK_SIZE;
 }
+
+static char* encrypt(char* in)
+{
+    int i, length = 0;
+    char* padding;
+    
+    length = 16 - strlen(in)%16;
+    padding = (char*)malloc(length);
+    
+    for (i=0; i<length; i++)
+        padding[i] = (char)length;
+    
+    char* tmp = (char*)malloc(strlen(in) + length);
+    
+    int count = 0;
+    char block[16];
+    char res[16];
+    
+    for (i=0; i<strlen(in); i++) {
+        if (i>0 && i%16==0) {
+            processBlock(block, 0, res, 0);
+            memcpy(tmp + i - 16, res, strlen(res));
+        }
+        if (i < strlen(in)) {
+            block[i%16] = in[i];
+        }else {
+            block[i%16] = padding[count%16];
+            count++;
+        }
+    }
+    
+    if (strlen(block) == 16) {
+        processBlock(block, 0, res, 0);
+        memcpy(tmp + i - 16, res, strlen(res));
+    }
+    
+    free(padding);
+    return  tmp;
+}
+
+static char* update(char* in)
+{
+    return update(in, 0, strlen(in));
+}
+
+static char* update(char* in, int offset, int length)
+{
+    char* tempIn = (char*) malloc(length + strlen(remaining));
+    memcpy(tempIn, remaining, strlen(remaining));
+    
+    
+    //keep it if shorter than 16
+    if (strlen(tempIn) < 16) {
+        remaining = tempIn;
+        return NULL;
+    }
+    
+    //update the remaining
+    int rlen = 0;
+    rlen = strlen(tempIn)%16;
+    free(remaining);
+    remaining = (char*) malloc(rlen);
+    
+    memcpy(remaining, tempIn, rlen);
+    
+    int i;
+    char* tmp = (char*) malloc(strlen(tempIn) - rlen);
+    
+    char block[16];
+    char res[16];
+    for (i=0; i<strlen(tempIn)-rlen; i++) {
+        if (i>0 && i%16==0) {
+            processBlock(block, 0, res, 0);
+            memcpy(tmp + i - 16, res, strlen(res));
+        }
+        block[i%16] == in[i];
+    }
+    if (strlen(block) == 16) {
+        processBlock(block, 0, res, 0);
+        memcpy(tmp + i - 16, res, strlen(res));
+    }
+    
+    first = 0;
+    free(tempIn);
+    return tmp;
+}
+
+static char* doFinal(char* in, int offset, int length)
+{
+    char* tempIn;
+    
+    if (in == NULL)
+        tempIn = remaining;
+    else {
+        tempIn = (char*) malloc(length + strlen(remaining));
+        memcpy(tempIn, remaining, strlen(remaining));
+        memcpy(tempIn + strlen(remaining), in + offset, length);
+    }
+    fre(remaining);
+    remaining =(char*) malloc(1);
+    
+    int newLength = 0;
+    char* padding;
+    int i;
+    newLength = 16 - strlen(tempIn)%16;
+    padding = malloc(newLength);
+    for (i=0; i<newLength; i++)
+        padding[i] = (char)length;
+    
+    char* tmp = malloc(strlen(tempIn) + newLength);
+    
+    int count = 0;
+    char block[16];
+    char res[16];
+    for (i=0; i<strlen(tempIn) + newLength; i++) {
+        if (i>0 && i%16==0) {
+            processBlock(block, 0, res, 0);
+            memcpy(tmp + i - 16, res, strlen(res));
+        }
+        if (i < strlen(tempIn))
+            block[i%16] = tempIn[i];
+        else {
+            block[i%16] = padding[count%16];
+            count++;
+        }
+    }
+    
+    if (strlen(block) == 16) {
+        processBlock(block, 0, res, 0);
+        memcpy(tmp + i - 16, res, strlen(res));
+    }
+    
+    free(tempIn);
+    free(padding);
+    return tmp;
+}
+
+static void unpackBlock(char* bytes, int off)
+{
+    int index = off;
+    
+    // need verification of this type casting
+    bytes[index++] = (char)C0;
+    bytes[index++] = (char)(C0 >> 8);
+    bytes[index++] = (char)(C0 >> 16);
+    bytes[index++] = (char)(C0 >> 24);
+    
+    bytes[index++] = (char)C1;
+    bytes[index++] = (char)(C1 >> 8);
+    bytes[index++] = (char)(C1 >> 16);
+    bytes[index++] = (char)(C1 >> 24);
+    
+    bytes[index++] = (char)C2;
+    bytes[index++] = (char)(C2 >> 8);
+    bytes[index++] = (char)(C2 >> 16);
+    bytes[index++] = (char)(C2 >> 24);
+    
+    bytes[index++] = (char)C3;
+    bytes[index++] = (char)(C3 >> 8);
+    bytes[index++] = (char)(C3 >> 16);
+    bytes[index++] = (char)(C3 >> 24);
+}
+
+static void encryptBlock(char* KW)
+{
+    
+}
