@@ -436,31 +436,108 @@ static char* doFinal(char* in, int offset, int length)
 
 static void unpackBlock(char* bytes, int off)
 {
+	int index = off;
+	
+	C0 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C0 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+	C1 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C1 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+	C2 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C2 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+	C3 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C3 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+}
+
+static void packBlock(char* bytes, int off)
+{
     int index = off;
     
-    // need verification of this type casting
-    bytes[index++] = (char)C0;
-    bytes[index++] = (char)(C0 >> 8);
-    bytes[index++] = (char)(C0 >> 16);
-    bytes[index++] = (char)(C0 >> 24);
-    
-    bytes[index++] = (char)C1;
-    bytes[index++] = (char)(C1 >> 8);
-    bytes[index++] = (char)(C1 >> 16);
-    bytes[index++] = (char)(C1 >> 24);
-    
-    bytes[index++] = (char)C2;
-    bytes[index++] = (char)(C2 >> 8);
-    bytes[index++] = (char)(C2 >> 16);
-    bytes[index++] = (char)(C2 >> 24);
-    
-    bytes[index++] = (char)C3;
-    bytes[index++] = (char)(C3 >> 8);
-    bytes[index++] = (char)(C3 >> 16);
-    bytes[index++] = (char)(C3 >> 24);
+	for (i=0; i<4; i++)
+		bytes[index++] = (C0 >> (8*i)) & 0xFF;
+	for (i=0; i<4; i++)
+		bytes[index++] = (C1 >> (8*i)) & 0xFF;
+	for (i=0; i<4; i++)
+		bytes[index++] = (C2 >> (8*i)) & 0xFF;
+	for (i=0; i<4; i++)
+		bytes[index++] = (C3 >> (8*i)) & 0xFF;
 }
 
 static void encryptBlock(char* KW)
 {
-    
+    int r, r0, r1, r2, r3;
+
+	C0 ^= KW[0][0];
+	C1 ^= KW[0][1];
+	C2 ^= KW[0][2];
+	C3 ^= KW[0][3];
+
+	r = 1;
+
+	while (r < rounds - 1)
+	{
+		r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255],16) ^ shift(T0[(C3>>24)&255],8) ^ KW[r][0];
+		r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r][1];
+		r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r][2];
+		r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++][3];
+		C0 = T0[r0&255] ^ shift(T0[(r1>>8)&255], 24) ^ shift(T0[(r2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r][0];
+		C1 = T0[r1&255] ^ shift(T0[(r2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(r0>>24)&255], 8) ^ KW[r][1];
+		C2 = T0[r2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(r0>>16)&255], 16) ^ shift(T0[(r1>>24)&255], 8) ^ KW[r][2];
+		C3 = T0[r3&255] ^ shift(T0[(r0>>8)&255], 24) ^ shift(T0[(r1>>16)&255], 16) ^ shift(T0[(r2>>24)&255], 8) ^ KW[r++][3];
+	}
+
+	r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255], 16) ^ shift(T0[(C3>>24)&255], 8) ^ KW[r][0];
+	r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r][1];
+	r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r][2];
+	r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++][3];
+
+	// the final round's table is a simple function of S so we don't use a whole other four tables for it
+
+	C0 = (S[r0&255]&255) ^ ((S[(r1>>8)&255]&255)<<8) ^ ((S[(r2>>16)&255]&255)<<16) ^ (S[(r3>>24)&255]<<24) ^ KW[r][0];
+	C1 = (S[r1&255]&255) ^ ((S[(r2>>8)&255]&255)<<8) ^ ((S[(r3>>16)&255]&255)<<16) ^ (S[(r0>>24)&255]<<24) ^ KW[r][1];
+	C2 = (S[r2&255]&255) ^ ((S[(r3>>8)&255]&255)<<8) ^ ((S[(r0>>16)&255]&255)<<16) ^ (S[(r1>>24)&255]<<24) ^ KW[r][2];
+	C3 = (S[r3&255]&255) ^ ((S[(r0>>8)&255]&255)<<8) ^ ((S[(r1>>16)&255]&255)<<16) ^ (S[(r2>>24)&255]<<24) ^ KW[r][3];
+}
+
+static void decryptBlock(char* KW)
+{
+	int r, r0, r1, r2, r3;
+
+	C0 ^= KW[ROUNDS][0];
+	C1 ^= KW[ROUNDS][1];
+	C2 ^= KW[ROUNDS][2];
+	C3 ^= KW[ROUNDS][3];
+
+	r = ROUNDS-1;
+
+	while (r>1)
+	{
+		r0 = Tinv0[C0&255] ^ shift(Tinv0[(C3>>8)&255], 24) ^ shift(Tinv0[(C2>>16)&255], 16) ^ shift(Tinv0[(C1>>24)&255], 8) ^ KW[r][0];
+		r1 = Tinv0[C1&255] ^ shift(Tinv0[(C0>>8)&255], 24) ^ shift(Tinv0[(C3>>16)&255], 16) ^ shift(Tinv0[(C2>>24)&255], 8) ^ KW[r][1];
+		r2 = Tinv0[C2&255] ^ shift(Tinv0[(C1>>8)&255], 24) ^ shift(Tinv0[(C0>>16)&255], 16) ^ shift(Tinv0[(C3>>24)&255], 8) ^ KW[r][2];
+		r3 = Tinv0[C3&255] ^ shift(Tinv0[(C2>>8)&255], 24) ^ shift(Tinv0[(C1>>16)&255], 16) ^ shift(Tinv0[(C0>>24)&255], 8) ^ KW[r--][3];
+		C0 = Tinv0[r0&255] ^ shift(Tinv0[(r3>>8)&255], 24) ^ shift(Tinv0[(r2>>16)&255], 16) ^ shift(Tinv0[(r1>>24)&255], 8) ^ KW[r][0];
+		C1 = Tinv0[r1&255] ^ shift(Tinv0[(r0>>8)&255], 24) ^ shift(Tinv0[(r3>>16)&255], 16) ^ shift(Tinv0[(r2>>24)&255], 8) ^ KW[r][1];
+		C2 = Tinv0[r2&255] ^ shift(Tinv0[(r1>>8)&255], 24) ^ shift(Tinv0[(r0>>16)&255], 16) ^ shift(Tinv0[(r3>>24)&255], 8) ^ KW[r][2];
+		C3 = Tinv0[r3&255] ^ shift(Tinv0[(r2>>8)&255], 24) ^ shift(Tinv0[(r1>>16)&255], 16) ^ shift(Tinv0[(r0>>24)&255], 8) ^ KW[r--][3];
+	}
+
+	r0 = Tinv0[C0&255] ^ shift(Tinv0[(C3>>8)&255], 24) ^ shift(Tinv0[(C2>>16)&255], 16) ^ shift(Tinv0[(C1>>24)&255], 8) ^ KW[r][0];
+	r1 = Tinv0[C1&255] ^ shift(Tinv0[(C0>>8)&255], 24) ^ shift(Tinv0[(C3>>16)&255], 16) ^ shift(Tinv0[(C2>>24)&255], 8) ^ KW[r][1];
+	r2 = Tinv0[C2&255] ^ shift(Tinv0[(C1>>8)&255], 24) ^ shift(Tinv0[(C0>>16)&255], 16) ^ shift(Tinv0[(C3>>24)&255], 8) ^ KW[r][2];
+	r3 = Tinv0[C3&255] ^ shift(Tinv0[(C2>>8)&255], 24) ^ shift(Tinv0[(C1>>16)&255], 16) ^ shift(Tinv0[(C0>>24)&255], 8) ^ KW[r][3];
+	
+	// the final round's table is a simple function of Si so we don't use a whole other four tables for it
+
+	C0 = (Si[r0&255]&255) ^ ((Si[(r3>>8)&255]&255)<<8) ^ ((Si[(r2>>16)&255]&255)<<16) ^ (Si[(r1>>24)&255]<<24) ^ KW[0][0];
+	C1 = (Si[r1&255]&255) ^ ((Si[(r0>>8)&255]&255)<<8) ^ ((Si[(r3>>16)&255]&255)<<16) ^ (Si[(r2>>24)&255]<<24) ^ KW[0][1];
+	C2 = (Si[r2&255]&255) ^ ((Si[(r1>>8)&255]&255)<<8) ^ ((Si[(r0>>16)&255]&255)<<16) ^ (Si[(r3>>24)&255]<<24) ^ KW[0][2];
+	C3 = (Si[r3&255]&255) ^ ((Si[(r2>>8)&255]&255)<<8) ^ ((Si[(r1>>16)&255]&255)<<16) ^ (Si[(r0>>24)&255]<<24) ^ KW[0][3];
 }
