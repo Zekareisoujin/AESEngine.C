@@ -418,7 +418,7 @@ static int processBlock(char* in, int inOff, char* out, int outOff)
 	return BLOCK_SIZE;
 }
 
-static char* encrypt(char* in)
+char* encrypt(char* in)
 {
     int i, length = 0;
     char* padding;

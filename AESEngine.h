@@ -6,4 +6,9 @@
 #include <string.h>
 #include <stdlib.h>
 
+void init(int encryption, char* AESKey);
+void deinit();
+int getBlockSize();
+char* encrypt(char* in);
+
 #endif
