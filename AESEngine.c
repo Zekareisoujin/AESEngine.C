@@ -1,6 +1,8 @@
-#incldue "AESEngine.h"
+#include "AESEngine.h"
+#include <string.h>
 
-#define BLOCK_SIZE 16
+#define BLOCK_SIZE 	16
+#define BLOCK_SIZE_IN_WORD	4
 
 static const int m1 = 0x80808080;
 static const int m2 = 0x7f7f7f7f;
@@ -67,10 +69,10 @@ unsigned const char Rcon[256] =
 	0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 
 	0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 
 	0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d
-}
+};
 
 // Precomputed table for round calculation
-unsigned const char T0[256] = 
+const int T0[256] = 
 {
 	0xa56363c6, 0x847c7cf8, 0x997777ee, 0x8d7b7bf6, 0x0df2f2ff, 
 	0xbd6b6bd6, 0xb16f6fde, 0x54c5c591, 0x50303060, 0x03010102, 
@@ -126,7 +128,7 @@ unsigned const char T0[256] =
 	0x3a16162c
 };
 
-unsigned const char inv_T0[256] = 
+const int inv_T0[256] = 
 {
 	0x50a7f451, 0x5365417e, 0xc3a4171a, 0x965e273a, 0xcb6bab3b, 
 	0xf1459d1f, 0xab58faac, 0x9303e34b, 0x55fa3020, 0xf66d76ad, 
@@ -184,12 +186,12 @@ unsigned const char inv_T0[256] =
 
 static int shift(int r, int shift)
 {
-	return (r >>> shift) | (r << -shift);
+	return (r >> shift) | (r << -shift);
 }
 
 static int FFmulX(int x)
 {
-	return (((x & m2) << 1) ^ (((x & m1) >>> 7) * m3));
+	return (((x & m2) << 1) ^ (((x & m1) >> 7) * m3));
 }
 
 static int inv_mcol(int x)
@@ -207,9 +209,16 @@ static int subWord(int x)
 	return (s[x&255]&255 | ((s[(x>>8)&255]&255)<<8) | ((s[(x>>16)&255]&255)<<16) | s[(x>>24)&255]<<24);
 }
 
+static int 		rounds;
+static int* 	working_key = NULL;
+static int 		C0, C1, C2, C3;
+static int 		for_encryption;
+static char*	remaining;
+static int		first;
+
 static int* generateWorkingKey(char* key)
 {
-	int KC = strlen(key)/4;
+	int KC = strlen(key)/4; //key length in words
 	int t;
 	
 #ifdef DEBUG
@@ -219,13 +228,14 @@ static int* generateWorkingKey(char* key)
 
 	rounds = KC + 6;
 	int* W;
-	W = malloc((rounds+1)*4*sizeof(int));
+	int w = BLOCK_SIZE_IN_WORD;
+	W = (int*) malloc((rounds+1)*sizeof(int)*w);
 	
 	//copy the round key array
 	t = 0;
 	int i = 0;
 	while (i < strlen(key)) {
-		W[t >> 2][t & 3] = (key[i]&0xff) | ((key[i+1]&0xff) << 8) | ((key[i+2]&0xff) << 16) | (key[i+3] << 24);
+		W[(t>>2)*w + (t&3)] = (key[i]&0xff) | ((key[i+1]&0xff) << 8) | ((key[i+2]&0xff) << 16) | (key[i+3] << 24);
 		i+=4;
 		t++;
 	}
@@ -233,7 +243,7 @@ static int* generateWorkingKey(char* key)
 	// while not enough round key material calculated, calculate new values
 	int k = (rounds + 1) << 2;
 	for (i=KC; i<k; i++) {
-		int temp = W[(i-1)>>2][(i-1)&3];
+		int temp = W[((i-1)>>2)*w + ((i-1)&3)];
 		if ((i % KC) == 0) {
 			temp = subWord(shift(temp, 8)) ^ Rcon[(i / KC)-1];
 		}
@@ -241,24 +251,18 @@ static int* generateWorkingKey(char* key)
 			temp = subWord(temp);
 		}
 		
-		W[i>>2][i&3] = W[(i - KC)>>2][(i-KC)&3] ^ temp;
+		W[(i>>2)*w + (i&3)] = W[((i - KC)>>2)*w + ((i-KC)&3)] ^ temp;
 	}
 	
+	int j;
 	if (!for_encryption) {
-		for (int j=1; j<rounds; j++)
+		for (j=1; j<rounds; j++)
 			for (i=0; i<4; i++)
-				W[j][i] = inv_mcol(W[j][i]);
+				W[j*w + i] = inv_mcol(W[j*w + i]);
 	}
 	
 	return W;
 }
-
-static int 		rounds;
-static int* 	working_key = NULL;
-static int 		C0, C1, C2, C3;
-static int 		for_encryption;
-static char*	remaining;
-static int		first;
 
 void init(int encryption, char* AESKey) 
 {
@@ -277,6 +281,117 @@ void deinit()
 int getBlockSize()
 {
 	return BLOCK_SIZE;
+}
+
+static void unpackBlock(char* bytes, int off)
+{
+	int i, index = off;
+	
+	C0 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C0 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+	C1 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C1 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+	C2 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C2 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+	C3 = bytes[index++] & 0xFF;
+	for (i=1; i<4; i++) {
+		C3 |= (bytes[index++] & 0xFF) << (8*i);
+	}
+}
+
+static void packBlock(char* bytes, int off)
+{
+    int i, index = off;
+    
+	for (i=0; i<4; i++)
+		bytes[index++] = (C0 >> (8*i)) & 0xFF;
+	for (i=0; i<4; i++)
+		bytes[index++] = (C1 >> (8*i)) & 0xFF;
+	for (i=0; i<4; i++)
+		bytes[index++] = (C2 >> (8*i)) & 0xFF;
+	for (i=0; i<4; i++)
+		bytes[index++] = (C3 >> (8*i)) & 0xFF;
+}
+
+static void encryptBlock(int* KW)
+{
+    int r, r0, r1, r2, r3;
+	int w = BLOCK_SIZE_IN_WORD;
+
+	// Keys taken from first round: KW[0][0-3]
+	C0 ^= KW[0];
+	C1 ^= KW[1];
+	C2 ^= KW[2];
+	C3 ^= KW[3];
+
+	r = 1;
+
+	while (r < rounds - 1)
+	{
+		r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255],16) ^ shift(T0[(C3>>24)&255],8) ^ KW[r*w + 0];
+		r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r*w + 1];
+		r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r*w + 2];
+		r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++*w + 3];
+		C0 = T0[r0&255] ^ shift(T0[(r1>>8)&255], 24) ^ shift(T0[(r2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r*w + 0];
+		C1 = T0[r1&255] ^ shift(T0[(r2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(r0>>24)&255], 8) ^ KW[r*w + 1];
+		C2 = T0[r2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(r0>>16)&255], 16) ^ shift(T0[(r1>>24)&255], 8) ^ KW[r*w + 2];
+		C3 = T0[r3&255] ^ shift(T0[(r0>>8)&255], 24) ^ shift(T0[(r1>>16)&255], 16) ^ shift(T0[(r2>>24)&255], 8) ^ KW[r++*w + 3];
+	}
+
+	r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255], 16) ^ shift(T0[(C3>>24)&255], 8) ^ KW[r*w + 0];
+	r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r*w + 1];
+	r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r*w + 2];
+	r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++*w + 3];
+
+	// the final round's table is a simple function of S so we don't use a whole other four tables for it
+
+	C0 = (s[r0&255]&255) ^ ((s[(r1>>8)&255]&255)<<8) ^ ((s[(r2>>16)&255]&255)<<16) ^ (s[(r3>>24)&255]<<24) ^ KW[r*w + 0];
+	C1 = (s[r1&255]&255) ^ ((s[(r2>>8)&255]&255)<<8) ^ ((s[(r3>>16)&255]&255)<<16) ^ (s[(r0>>24)&255]<<24) ^ KW[r*w + 1];
+	C2 = (s[r2&255]&255) ^ ((s[(r3>>8)&255]&255)<<8) ^ ((s[(r0>>16)&255]&255)<<16) ^ (s[(r1>>24)&255]<<24) ^ KW[r*w + 2];
+	C3 = (s[r3&255]&255) ^ ((s[(r0>>8)&255]&255)<<8) ^ ((s[(r1>>16)&255]&255)<<16) ^ (s[(r2>>24)&255]<<24) ^ KW[r*w + 3];
+}
+
+static void decryptBlock(int* KW)
+{
+	int r, r0, r1, r2, r3;
+	int w = BLOCK_SIZE_IN_WORD;
+
+	C0 ^= KW[rounds*w + 0];
+	C1 ^= KW[rounds*w + 1];
+	C2 ^= KW[rounds*w + 2];
+	C3 ^= KW[rounds*w + 3];
+
+	r = rounds-1;
+
+	while (r>1)
+	{
+		r0 = inv_T0[C0&255] ^ shift(inv_T0[(C3>>8)&255], 24) ^ shift(inv_T0[(C2>>16)&255], 16) ^ shift(inv_T0[(C1>>24)&255], 8) ^ KW[r*w + 0];
+		r1 = inv_T0[C1&255] ^ shift(inv_T0[(C0>>8)&255], 24) ^ shift(inv_T0[(C3>>16)&255], 16) ^ shift(inv_T0[(C2>>24)&255], 8) ^ KW[r*w + 1];
+		r2 = inv_T0[C2&255] ^ shift(inv_T0[(C1>>8)&255], 24) ^ shift(inv_T0[(C0>>16)&255], 16) ^ shift(inv_T0[(C3>>24)&255], 8) ^ KW[r*w + 2];
+		r3 = inv_T0[C3&255] ^ shift(inv_T0[(C2>>8)&255], 24) ^ shift(inv_T0[(C1>>16)&255], 16) ^ shift(inv_T0[(C0>>24)&255], 8) ^ KW[r--*w + 3];
+		C0 = inv_T0[r0&255] ^ shift(inv_T0[(r3>>8)&255], 24) ^ shift(inv_T0[(r2>>16)&255], 16) ^ shift(inv_T0[(r1>>24)&255], 8) ^ KW[r*w + 0];
+		C1 = inv_T0[r1&255] ^ shift(inv_T0[(r0>>8)&255], 24) ^ shift(inv_T0[(r3>>16)&255], 16) ^ shift(inv_T0[(r2>>24)&255], 8) ^ KW[r*w + 1];
+		C2 = inv_T0[r2&255] ^ shift(inv_T0[(r1>>8)&255], 24) ^ shift(inv_T0[(r0>>16)&255], 16) ^ shift(inv_T0[(r3>>24)&255], 8) ^ KW[r*w + 2];
+		C3 = inv_T0[r3&255] ^ shift(inv_T0[(r2>>8)&255], 24) ^ shift(inv_T0[(r1>>16)&255], 16) ^ shift(inv_T0[(r0>>24)&255], 8) ^ KW[r--*w + 3];
+	}
+
+	r0 = inv_T0[C0&255] ^ shift(inv_T0[(C3>>8)&255], 24) ^ shift(inv_T0[(C2>>16)&255], 16) ^ shift(inv_T0[(C1>>24)&255], 8) ^ KW[r*w + 0];
+	r1 = inv_T0[C1&255] ^ shift(inv_T0[(C0>>8)&255], 24) ^ shift(inv_T0[(C3>>16)&255], 16) ^ shift(inv_T0[(C2>>24)&255], 8) ^ KW[r*w + 1];
+	r2 = inv_T0[C2&255] ^ shift(inv_T0[(C1>>8)&255], 24) ^ shift(inv_T0[(C0>>16)&255], 16) ^ shift(inv_T0[(C3>>24)&255], 8) ^ KW[r*w + 2];
+	r3 = inv_T0[C3&255] ^ shift(inv_T0[(C2>>8)&255], 24) ^ shift(inv_T0[(C1>>16)&255], 16) ^ shift(inv_T0[(C0>>24)&255], 8) ^ KW[r*w + 3];
+	
+	// the final round's table is a simple function of Si so we don't use a whole other four tables for it
+
+	C0 = (inv_s[r0&255]&255) ^ ((inv_s[(r3>>8)&255]&255)<<8) ^ ((inv_s[(r2>>16)&255]&255)<<16) ^ (inv_s[(r1>>24)&255]<<24) ^ KW[0];
+	C1 = (inv_s[r1&255]&255) ^ ((inv_s[(r0>>8)&255]&255)<<8) ^ ((inv_s[(r3>>16)&255]&255)<<16) ^ (inv_s[(r2>>24)&255]<<24) ^ KW[1];
+	C2 = (inv_s[r2&255]&255) ^ ((inv_s[(r1>>8)&255]&255)<<8) ^ ((inv_s[(r0>>16)&255]&255)<<16) ^ (inv_s[(r3>>24)&255]<<24) ^ KW[2];
+	C3 = (inv_s[r3&255]&255) ^ ((inv_s[(r2>>8)&255]&255)<<8) ^ ((inv_s[(r1>>16)&255]&255)<<16) ^ (inv_s[(r0>>24)&255]<<24) ^ KW[3];
 }
 
 static int processBlock(char* in, int inOff, char* out, int outOff)
@@ -342,12 +457,12 @@ static char* encrypt(char* in)
     return  tmp;
 }
 
-static char* update(char* in)
+/*char* update(char* in)
 {
     return update(in, 0, strlen(in));
 }
 
-static char* update(char* in, int offset, int length)
+char* update(char* in, int offset, int length)
 {
     char* tempIn = (char*) malloc(length + strlen(remaining));
     memcpy(tempIn, remaining, strlen(remaining));
@@ -389,7 +504,7 @@ static char* update(char* in, int offset, int length)
     return tmp;
 }
 
-static char* doFinal(char* in, int offset, int length)
+char* doFinal(char* in, int offset, int length)
 {
     char* tempIn;
     
@@ -437,112 +552,4 @@ static char* doFinal(char* in, int offset, int length)
     free(tempIn);
     free(padding);
     return tmp;
-}
-
-static void unpackBlock(char* bytes, int off)
-{
-	int index = off;
-	
-	C0 = bytes[index++] & 0xFF;
-	for (i=1; i<4; i++) {
-		C0 |= (bytes[index++] & 0xFF) << (8*i);
-	}
-	C1 = bytes[index++] & 0xFF;
-	for (i=1; i<4; i++) {
-		C1 |= (bytes[index++] & 0xFF) << (8*i);
-	}
-	C2 = bytes[index++] & 0xFF;
-	for (i=1; i<4; i++) {
-		C2 |= (bytes[index++] & 0xFF) << (8*i);
-	}
-	C3 = bytes[index++] & 0xFF;
-	for (i=1; i<4; i++) {
-		C3 |= (bytes[index++] & 0xFF) << (8*i);
-	}
-}
-
-static void packBlock(char* bytes, int off)
-{
-    int index = off;
-    
-	for (i=0; i<4; i++)
-		bytes[index++] = (C0 >> (8*i)) & 0xFF;
-	for (i=0; i<4; i++)
-		bytes[index++] = (C1 >> (8*i)) & 0xFF;
-	for (i=0; i<4; i++)
-		bytes[index++] = (C2 >> (8*i)) & 0xFF;
-	for (i=0; i<4; i++)
-		bytes[index++] = (C3 >> (8*i)) & 0xFF;
-}
-
-static void encryptBlock(char* KW)
-{
-    int r, r0, r1, r2, r3;
-
-	C0 ^= KW[0][0];
-	C1 ^= KW[0][1];
-	C2 ^= KW[0][2];
-	C3 ^= KW[0][3];
-
-	r = 1;
-
-	while (r < rounds - 1)
-	{
-		r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255],16) ^ shift(T0[(C3>>24)&255],8) ^ KW[r][0];
-		r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r][1];
-		r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r][2];
-		r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++][3];
-		C0 = T0[r0&255] ^ shift(T0[(r1>>8)&255], 24) ^ shift(T0[(r2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r][0];
-		C1 = T0[r1&255] ^ shift(T0[(r2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(r0>>24)&255], 8) ^ KW[r][1];
-		C2 = T0[r2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(r0>>16)&255], 16) ^ shift(T0[(r1>>24)&255], 8) ^ KW[r][2];
-		C3 = T0[r3&255] ^ shift(T0[(r0>>8)&255], 24) ^ shift(T0[(r1>>16)&255], 16) ^ shift(T0[(r2>>24)&255], 8) ^ KW[r++][3];
-	}
-
-	r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255], 16) ^ shift(T0[(C3>>24)&255], 8) ^ KW[r][0];
-	r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r][1];
-	r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r][2];
-	r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++][3];
-
-	// the final round's table is a simple function of S so we don't use a whole other four tables for it
-
-	C0 = (s[r0&255]&255) ^ ((s[(r1>>8)&255]&255)<<8) ^ ((s[(r2>>16)&255]&255)<<16) ^ (s[(r3>>24)&255]<<24) ^ KW[r][0];
-	C1 = (s[r1&255]&255) ^ ((s[(r2>>8)&255]&255)<<8) ^ ((s[(r3>>16)&255]&255)<<16) ^ (s[(r0>>24)&255]<<24) ^ KW[r][1];
-	C2 = (s[r2&255]&255) ^ ((s[(r3>>8)&255]&255)<<8) ^ ((s[(r0>>16)&255]&255)<<16) ^ (s[(r1>>24)&255]<<24) ^ KW[r][2];
-	C3 = (s[r3&255]&255) ^ ((s[(r0>>8)&255]&255)<<8) ^ ((s[(r1>>16)&255]&255)<<16) ^ (s[(r2>>24)&255]<<24) ^ KW[r][3];
-}
-
-static void decryptBlock(char* KW)
-{
-	int r, r0, r1, r2, r3;
-
-	C0 ^= KW[ROUNDS][0];
-	C1 ^= KW[ROUNDS][1];
-	C2 ^= KW[ROUNDS][2];
-	C3 ^= KW[ROUNDS][3];
-
-	r = ROUNDS-1;
-
-	while (r>1)
-	{
-		r0 = inv_T0[C0&255] ^ shift(inv_T0[(C3>>8)&255], 24) ^ shift(inv_T0[(C2>>16)&255], 16) ^ shift(inv_T0[(C1>>24)&255], 8) ^ KW[r][0];
-		r1 = inv_T0[C1&255] ^ shift(inv_T0[(C0>>8)&255], 24) ^ shift(inv_T0[(C3>>16)&255], 16) ^ shift(inv_T0[(C2>>24)&255], 8) ^ KW[r][1];
-		r2 = inv_T0[C2&255] ^ shift(inv_T0[(C1>>8)&255], 24) ^ shift(inv_T0[(C0>>16)&255], 16) ^ shift(inv_T0[(C3>>24)&255], 8) ^ KW[r][2];
-		r3 = inv_T0[C3&255] ^ shift(inv_T0[(C2>>8)&255], 24) ^ shift(inv_T0[(C1>>16)&255], 16) ^ shift(inv_T0[(C0>>24)&255], 8) ^ KW[r--][3];
-		C0 = inv_T0[r0&255] ^ shift(inv_T0[(r3>>8)&255], 24) ^ shift(inv_T0[(r2>>16)&255], 16) ^ shift(inv_T0[(r1>>24)&255], 8) ^ KW[r][0];
-		C1 = inv_T0[r1&255] ^ shift(inv_T0[(r0>>8)&255], 24) ^ shift(inv_T0[(r3>>16)&255], 16) ^ shift(inv_T0[(r2>>24)&255], 8) ^ KW[r][1];
-		C2 = inv_T0[r2&255] ^ shift(inv_T0[(r1>>8)&255], 24) ^ shift(inv_T0[(r0>>16)&255], 16) ^ shift(inv_T0[(r3>>24)&255], 8) ^ KW[r][2];
-		C3 = inv_T0[r3&255] ^ shift(inv_T0[(r2>>8)&255], 24) ^ shift(inv_T0[(r1>>16)&255], 16) ^ shift(inv_T0[(r0>>24)&255], 8) ^ KW[r--][3];
-	}
-
-	r0 = inv_T0[C0&255] ^ shift(inv_T0[(C3>>8)&255], 24) ^ shift(inv_T0[(C2>>16)&255], 16) ^ shift(inv_T0[(C1>>24)&255], 8) ^ KW[r][0];
-	r1 = inv_T0[C1&255] ^ shift(inv_T0[(C0>>8)&255], 24) ^ shift(inv_T0[(C3>>16)&255], 16) ^ shift(inv_T0[(C2>>24)&255], 8) ^ KW[r][1];
-	r2 = inv_T0[C2&255] ^ shift(inv_T0[(C1>>8)&255], 24) ^ shift(inv_T0[(C0>>16)&255], 16) ^ shift(inv_T0[(C3>>24)&255], 8) ^ KW[r][2];
-	r3 = inv_T0[C3&255] ^ shift(inv_T0[(C2>>8)&255], 24) ^ shift(inv_T0[(C1>>16)&255], 16) ^ shift(inv_T0[(C0>>24)&255], 8) ^ KW[r][3];
-	
-	// the final round's table is a simple function of Si so we don't use a whole other four tables for it
-
-	C0 = (inv_s[r0&255]&255) ^ ((inv_s[(r3>>8)&255]&255)<<8) ^ ((inv_s[(r2>>16)&255]&255)<<16) ^ (inv_s[(r1>>24)&255]<<24) ^ KW[0][0];
-	C1 = (inv_s[r1&255]&255) ^ ((inv_s[(r0>>8)&255]&255)<<8) ^ ((inv_s[(r3>>16)&255]&255)<<16) ^ (inv_s[(r2>>24)&255]<<24) ^ KW[0][1];
-	C2 = (inv_s[r2&255]&255) ^ ((inv_s[(r1>>8)&255]&255)<<8) ^ ((inv_s[(r0>>16)&255]&255)<<16) ^ (inv_s[(r3>>24)&255]<<24) ^ KW[0][2];
-	C3 = (inv_s[r3&255]&255) ^ ((inv_s[(r2>>8)&255]&255)<<8) ^ ((inv_s[(r1>>16)&255]&255)<<16) ^ (inv_s[(r0>>24)&255]<<24) ^ KW[0][3];
-}
+}*/
