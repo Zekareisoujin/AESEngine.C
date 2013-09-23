@@ -198,7 +198,7 @@ static int shift(int r, int shift)
 
 static int FFmulX(int x)
 {
-	return (((x & m2) << 1) ^ (((x & m1) >> 7) * m3));
+	return (((x & m2) << 1) ^ ((((unsigned int)(x & m1)) >> 7) * m3));
 }
 
 static int inv_mcol(int x)
@@ -261,6 +261,12 @@ static int* generateWorkingKey(char* key)
 		W[(i>>2)*w + (i&3)] = W[((i - KC)>>2)*w + ((i-KC)&3)] ^ temp;
 	}
 	
+	int* a = W;
+	i;
+	for (i=0; i<rounds; i++) {
+		printf("Round %d key: %d %d %d %d\n", i+1, a[i*4 + 0], a[i*4+1], a[i*4+2], a[i*4+3]);
+	}
+	
 	int j;
 	if (!for_encryption) {
 		for (j=1; j<rounds; j++)
@@ -276,11 +282,11 @@ void init(int encryption, char* AESKey)
     for_encryption = encryption;
 	working_key = generateWorkingKey(AESKey);
 	
-	/*int* a = working_key;
+	int* a = working_key;
 	int i;
 	for (i=0; i<rounds; i++) {
 		printf("Round %d key: %d %d %d %d\n", i+1, a[i*4 + 0], a[i*4+1], a[i*4+2], a[i*4+3]);
-	}*/
+	}
 	
 	remaining = (char*)malloc(sizeof(char)); //?
 	first = 1;
