@@ -271,7 +271,7 @@ static int* generateWorkingKey(char* key)
 	return W;
 }
 
-void init(int encryption, char* AESKey) 
+void AESEngineInit(int encryption, char* AESKey) 
 {
     for_encryption = encryption;
 	working_key = generateWorkingKey(AESKey);
@@ -281,12 +281,12 @@ void init(int encryption, char* AESKey)
 	return;
 }
 
-void deinit()
+void AESEngineDeinit()
 {
     free(working_key);
 }
 
-int getBlockSize()
+int AESEngineGetBlockSize()
 {
 	return BLOCK_SIZE;
 }
@@ -427,7 +427,7 @@ static int processBlock(char* in, int inOff, char* out, int outOff)
 	return BLOCK_SIZE;
 }
 
-void encrypt(char* in, int inLength, char** out, int* outLength)
+void AESEngineProcess(char* in, int inLength, char** out, int* outLength)
 {
     int i, padLength = 0;
     char* padding;
