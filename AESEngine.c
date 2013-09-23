@@ -261,12 +261,6 @@ static int* generateWorkingKey(char* key)
 		W[(i>>2)*w + (i&3)] = W[((i - KC)>>2)*w + ((i-KC)&3)] ^ temp;
 	}
 	
-	int* a = W;
-	i;
-	for (i=0; i<rounds; i++) {
-		printf("Round %d key: %d %d %d %d\n", i+1, a[i*4 + 0], a[i*4+1], a[i*4+2], a[i*4+3]);
-	}
-	
 	int j;
 	if (!for_encryption) {
 		for (j=1; j<rounds; j++)
@@ -281,12 +275,6 @@ void init(int encryption, char* AESKey)
 {
     for_encryption = encryption;
 	working_key = generateWorkingKey(AESKey);
-	
-	int* a = working_key;
-	int i;
-	for (i=0; i<rounds; i++) {
-		printf("Round %d key: %d %d %d %d\n", i+1, a[i*4 + 0], a[i*4+1], a[i*4+2], a[i*4+3]);
-	}
 	
 	remaining = (char*)malloc(sizeof(char)); //?
 	first = 1;
@@ -461,11 +449,6 @@ void encrypt(char* in, int inLength, char** out, int* outLength)
         if (i>0 && i%16==0) {
             processBlock(block, 0, res, 0);
             memcpy(*out + i - 16, res, 16);
-			
-			/*int j;
-			for (j=0; j<16; j++)
-				printf("%d ", res[j]);
-			printf("\n");*/
         }
         if (i < inLength) {
             block[i%16] = in[i];
@@ -480,10 +463,6 @@ void encrypt(char* in, int inLength, char** out, int* outLength)
         processBlock(block, 0, res, 0);
         memcpy(*out + i - 16, res, 16);
     //}
-    /*int j;
-	for (j=0; j<*outLength; j++)
-		printf("%d ", (*out)[j]);
-	printf("\n");*/
 	
     free(padding);
 }
