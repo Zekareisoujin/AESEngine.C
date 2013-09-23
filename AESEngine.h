@@ -9,6 +9,6 @@
 void init(int encryption, char* AESKey);
 void deinit();
 int getBlockSize();
-char* encrypt(char* in);
+void encrypt(char* in, int inLength, char** out, int* outLength);
 
 #endif

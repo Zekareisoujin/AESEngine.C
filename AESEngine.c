@@ -51,7 +51,7 @@ unsigned const char inv_s[256] =
 };
 
 // Key schedule
-unsigned const char Rcon[256] = 
+/*const int Rcon[256] = 
 {
 	0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 
 	0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 
@@ -69,6 +69,13 @@ unsigned const char Rcon[256] =
 	0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 
 	0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 
 	0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d
+};*/
+
+// This rcon version is taken from the Java version
+const int Rcon[] = 
+{
+	0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a,
+	0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91 
 };
 
 // Precomputed table for round calculation
@@ -186,7 +193,7 @@ const int inv_T0[256] =
 
 static int shift(int r, int shift)
 {
-	return (r >> shift) | (r << -shift);
+	return ((unsigned int)r >> shift) | (r << -shift);
 }
 
 static int FFmulX(int x)
@@ -268,6 +275,13 @@ void init(int encryption, char* AESKey)
 {
     for_encryption = encryption;
 	working_key = generateWorkingKey(AESKey);
+	
+	/*int* a = working_key;
+	int i;
+	for (i=0; i<rounds; i++) {
+		printf("Round %d key: %d %d %d %d\n", i+1, a[i*4 + 0], a[i*4+1], a[i*4+2], a[i*4+3]);
+	}*/
+	
 	remaining = (char*)malloc(sizeof(char)); //?
 	first = 1;
 	return;
@@ -303,6 +317,7 @@ static void unpackBlock(char* bytes, int off)
 	for (i=1; i<4; i++) {
 		C3 |= (bytes[index++] & 0xFF) << (8*i);
 	}
+	
 }
 
 static void packBlock(char* bytes, int off)
@@ -418,29 +433,35 @@ static int processBlock(char* in, int inOff, char* out, int outOff)
 	return BLOCK_SIZE;
 }
 
-char* encrypt(char* in)
+void encrypt(char* in, int inLength, char** out, int* outLength)
 {
-    int i, length = 0;
+    int i, padLength = 0;
     char* padding;
     
-    length = 16 - strlen(in)%16;
-    padding = (char*)malloc(length);
+    padLength = 16 - inLength%16;
+    padding = (char*)malloc(padLength);
     
-    for (i=0; i<length; i++)
-        padding[i] = (char)length;
+    for (i=0; i<padLength; i++)
+        padding[i] = (char) padLength;
     
-    char* tmp = (char*)malloc(strlen(in) + length);
+	*outLength = inLength + padLength;
+    *out = malloc(*outLength);
     
     int count = 0;
     char block[16];
     char res[16];
     
-    for (i=0; i<strlen(in); i++) {
+    for (i=0; i<*outLength; i++) {
         if (i>0 && i%16==0) {
             processBlock(block, 0, res, 0);
-            memcpy(tmp + i - 16, res, strlen(res));
+            memcpy(*out + i - 16, res, 16);
+			
+			/*int j;
+			for (j=0; j<16; j++)
+				printf("%d ", res[j]);
+			printf("\n");*/
         }
-        if (i < strlen(in)) {
+        if (i < inLength) {
             block[i%16] = in[i];
         }else {
             block[i%16] = padding[count%16];
@@ -448,13 +469,17 @@ char* encrypt(char* in)
         }
     }
     
-    if (strlen(block) == 16) {
+    //if (strlen(block) == 16) {
+		//printf("Actually got here!\n");
         processBlock(block, 0, res, 0);
-        memcpy(tmp + i - 16, res, strlen(res));
-    }
-    
+        memcpy(*out + i - 16, res, 16);
+    //}
+    /*int j;
+	for (j=0; j<*outLength; j++)
+		printf("%d ", (*out)[j]);
+	printf("\n");*/
+	
     free(padding);
-    return  tmp;
 }
 
 /*char* update(char* in)
