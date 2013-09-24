@@ -431,8 +431,32 @@ void AESEngineProcess(char* in, int inLength, char** out, int* outLength)
 {
     int i, padLength = 0;
     char* padding;
-    
-    padLength = 16 - inLength%16;
+
+	padLength = BLOCK_SIZE - inLength%BLOCK_SIZE;
+	padding = malloc(padLength);
+	memset(padding, (char)padLength, padLength);
+	
+	*outLength = inLength + padLength;
+	*out = malloc(*outLength);
+	
+	memcpy(*out, in, inLength);
+	memcpy(*out + inLength, padding, padLength);
+	
+	char block[BLOCK_SIZE];
+	char res[BLOCK_SIZE];
+	
+	i=0;
+	while (i*BLOCK_SIZE < *outLength) {
+		memcpy(block, *out+i*BLOCK_SIZE, BLOCK_SIZE);
+		processBlock(block, 0, res, 0);
+		memcpy(*out+i*BLOCK_SIZE, res, BLOCK_SIZE);
+		i++;
+	}
+	
+	free(padding);
+	
+	
+    /*padLength = 16 - inLength%16;
     padding = (char*)malloc(padLength);
     
     for (i=0; i<padLength; i++)
@@ -464,7 +488,7 @@ void AESEngineProcess(char* in, int inLength, char** out, int* outLength)
         memcpy(*out + i - 16, res, 16);
     //}
 	
-    free(padding);
+    free(padding);*/
 }
 
 /*char* update(char* in)
