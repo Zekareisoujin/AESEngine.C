@@ -403,7 +403,7 @@ static void decryptBlock(int* KW)
 	C3 = (inv_s[r3&255]&255) ^ ((inv_s[(r2>>8)&255]&255)<<8) ^ ((inv_s[(r1>>16)&255]&255)<<16) ^ (inv_s[(r0>>24)&255]<<24) ^ KW[3];
 }
 
-static int processBlock(char* in, int inOff, char* out, int outOff)
+static void processBlock(char* in, int inOff, char* out, int outOff)
 {
 #ifdef DEBUG
 	/*if (working_key == NULL)
@@ -423,8 +423,6 @@ static int processBlock(char* in, int inOff, char* out, int outOff)
 		decryptBlock(working_key);
 		packBlock(out, outOff);
 	}
-	
-	return BLOCK_SIZE;
 }
 
 void AESEngineProcess(char* in, int inLength, char** out, int* outLength)
@@ -454,41 +452,6 @@ void AESEngineProcess(char* in, int inLength, char** out, int* outLength)
 	}
 	
 	free(padding);
-	
-	
-    /*padLength = 16 - inLength%16;
-    padding = (char*)malloc(padLength);
-    
-    for (i=0; i<padLength; i++)
-        padding[i] = (char) padLength;
-    
-	*outLength = inLength + padLength;
-    *out = malloc(*outLength);
-    
-    int count = 0;
-    char block[16];
-    char res[16];
-    
-    for (i=0; i<*outLength; i++) {
-        if (i>0 && i%16==0) {
-            processBlock(block, 0, res, 0);
-            memcpy(*out + i - 16, res, 16);
-        }
-        if (i < inLength) {
-            block[i%16] = in[i];
-        }else {
-            block[i%16] = padding[count%16];
-            count++;
-        }
-    }
-    
-    //if (strlen(block) == 16) {
-		//printf("Actually got here!\n");
-        processBlock(block, 0, res, 0);
-        memcpy(*out + i - 16, res, 16);
-    //}
-	
-    free(padding);*/
 }
 
 /*char* update(char* in)
