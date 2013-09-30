@@ -223,13 +223,13 @@ static int 		for_encryption;
 static char*	remaining;
 static int		first;
 
-static int* generateWorkingKey(char* key)
+static int* generateWorkingKey(char* key, int keySizeInByte)
 {
-	int KC = strlen(key)/4; //key length in words
+	int KC = keySizeInByte/4; //key length in words
 	int t;
 	
 #ifdef DEBUG
-	if (((KC != 4) && (KC != 6) && (KC != 8)) || ((KC * 4) != strlen(key)))
+	if (((KC != 4) && (KC != 6) && (KC != 8)) || ((KC * 4) != keySizeInByte))
 		fprintf(stderr, "Illegal key length!\n");
 #endif
 
@@ -241,7 +241,7 @@ static int* generateWorkingKey(char* key)
 	//copy the round key array
 	t = 0;
 	int i = 0;
-	while (i < strlen(key)) {
+	while (i < keySizeInByte) {
 		W[(t>>2)*w + (t&3)] = (key[i]&0xff) | ((key[i+1]&0xff) << 8) | ((key[i+2]&0xff) << 16) | (key[i+3] << 24);
 		i+=4;
 		t++;
@@ -271,10 +271,10 @@ static int* generateWorkingKey(char* key)
 	return W;
 }
 
-void AESEngineInit(int encryption, char* AESKey) 
+void AESEngineInit(int encryption, char* AESKey, int keySize) 
 {
     for_encryption = encryption;
-	working_key = generateWorkingKey(AESKey);
+	working_key = generateWorkingKey(AESKey, keySize/8);
 	
 	remaining = (char*)malloc(sizeof(char)); //?
 	first = 1;
@@ -406,12 +406,12 @@ static void decryptBlock(int* KW)
 static int processBlock(char* in, int inOff, char* out, int outOff)
 {
 #ifdef DEBUG
-	if (working_key == NULL)
+	/*if (working_key == NULL)
 		fprintf(stderr, "No working key!\n");
 	if ((inOff + (32/2)) > strlen(in))
 		fprintf(stderr, "Input buffer too smal.\n");
 	if ((outOff + (32/2)) > srlen(out))
-		fprintf(stderr, "Output buffer too small.\n");
+		fprintf(stderr, "Output buffer too small.\n");*/
 #endif
 
 	if (for_encryption) {

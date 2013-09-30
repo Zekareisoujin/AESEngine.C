@@ -6,9 +6,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-void AESEngineInit(int encryption, char* AESKey);
-void AESEngineDeinit();
-int AESEngineGetBlockSize();
-void AESEngineProcess(char* in, int inLength, char** out, int* outLength);
+void 	AESEngineInit(int encryption, char* AESKey, int keySize);
+void 	AESEngineDeinit();
+int 	AESEngineGetBlockSize();
+void 	AESEngineProcess(char* in, int inLength, char** out, int* outLength);
 
 #endif
