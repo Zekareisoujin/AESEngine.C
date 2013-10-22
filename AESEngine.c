@@ -276,7 +276,7 @@ void AESEngineInit(int encryption, char* AESKey, int keySize)
     for_encryption = encryption;
 	working_key = generateWorkingKey(AESKey, keySize/8);
 	
-	remaining = (char*)malloc(sizeof(char)); //?
+	//remaining = (char*)malloc(sizeof(char)); //not yet in used
 	first = 1;
 	return;
 }
