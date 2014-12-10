@@ -220,8 +220,6 @@ static int 		rounds;
 static int* 	working_key = NULL;
 static int 		C0, C1, C2, C3;
 static int 		for_encryption;
-static char*	remaining;
-static int		first;
 
 static int* generateWorkingKey(char* key, int keySizeInByte)
 {
@@ -276,8 +274,6 @@ void AESEngineInit(int encryption, char* AESKey, int keySize)
     for_encryption = encryption;
 	working_key = generateWorkingKey(AESKey, keySize/8);
 	
-	//remaining = (char*)malloc(sizeof(char)); //not yet in used
-	first = 1;
 	return;
 }
 
@@ -427,31 +423,46 @@ static void processBlock(char* in, int inOff, char* out, int outOff)
 
 void AESEngineProcess(char* in, int inLength, char** out, int* outLength)
 {
-    int i, padLength = 0;
-    char* padding;
-
-	padLength = BLOCK_SIZE - inLength%BLOCK_SIZE;
-	padding = malloc(padLength);
-	memset(padding, (char)padLength, padLength);
+	int padLength, leftOver;
+	char* tmp;
+	int offset = 0;
 	
-	*outLength = inLength + padLength;
-	*out = malloc(*outLength);
+	leftOver = inLength%BLOCK_SIZE;
+	padLength = BLOCK_SIZE - leftOver;
+	if (leftOver == 0)
+		if (for_encryption)
+			*outLength = inLength + BLOCK_SIZE;
+		else
+			*outLength = inLength;
+	else
+		*outLength = inLength + padLength;
+	tmp = malloc(*outLength);
 	
-	memcpy(*out, in, inLength);
-	memcpy(*out + inLength, padding, padLength);
+	memset(tmp, (char)padLength, *outLength);
+	memcpy(tmp, in, inLength);
+	//memset(tmp, 0, *outLength);
 	
-	char block[BLOCK_SIZE];
-	char res[BLOCK_SIZE];
-	
-	i=0;
-	while (i*BLOCK_SIZE < *outLength) {
-		memcpy(block, *out+i*BLOCK_SIZE, BLOCK_SIZE);
-		processBlock(block, 0, res, 0);
-		memcpy(*out+i*BLOCK_SIZE, res, BLOCK_SIZE);
-		i++;
+	while (offset < *outLength) {
+		processBlock(tmp, offset, tmp, offset);
+		offset += BLOCK_SIZE;
 	}
 	
-	free(padding);
+	if (!for_encryption) {
+		padLength = *(tmp + *outLength - 1) & 0xff;
+		if (padLength > BLOCK_SIZE)
+			fprintf(stderr, "Pad block corrupted!\n");
+		int i;
+		for (i=1; i<=padLength; i++)
+			if (*(tmp + *outLength - i) != padLength)
+				fprintf(stderr, "Pad block corrupted!\n");
+				
+		*outLength -= padLength;
+	}
+	
+	*out = malloc(*outLength);
+	memcpy(*out, tmp, *outLength);
+	
+	free(tmp);
 }
 
 /*char* update(char* in)
